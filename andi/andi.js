@@ -8,7 +8,15 @@ var andiVersionNumber = "29.2.2";
 // ANDI CONFIG: //
 //==============//
 //URLs
-var host_url = "https://www.ssa.gov/accessibility/andi/";
+var host_url = (function() {
+	if (typeof window === "undefined") {
+		throw new Error("ANDI: window is undefined; host_url cannot be determined. Ensure ANDI is running in a browser context.");
+	}
+	if (typeof window.host_url === "string" && window.host_url.length > 0) {
+		return window.host_url;
+	}
+	throw new Error("ANDI: window.host_url is undefined or empty; ANDI assets cannot be loaded. Ensure background.js sets window.host_url before loading andi.js.");
+})();
 var help_url = host_url+"help/";
 var icons_url = host_url+"icons/";
 

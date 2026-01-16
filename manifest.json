@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "ANDI for Chrome",
+  "version": "29.2.2.0",
+  "description": "Community port of the Accessible Name & Description Inspector (ANDI) bookmarklet as a Google Chrome extension. This extension allows testers to use ANDI on websites with strict Content Security Policies (CSPs), which is blocked in the main version of ANDI.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Toggle ANDI"
+  },
+  "permissions": [
+    "scripting",
+    "activeTab"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["trusted-types-policy.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "andi/**",
+        "jquery.min.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
