@@ -1,0 +1,8 @@
+{
+  "name": "andi-for-chrome",
+  "version": "1.0.0",
+  "description": "ANDI accessibility inspector Chrome extension",
+  "scripts": {
+    "build": "node build.js"
+  }
+}
