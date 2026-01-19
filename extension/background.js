@@ -7,6 +7,8 @@ chrome.action.onClicked.addListener(async (tab) => {
 
   const extAndiBase = chrome.runtime.getURL('andi/');
 
+  const andiModuleFiles = ['andi/modules-wrapped/candi.js', 'andi/modules-wrapped/fandi.js', 'andi/modules-wrapped/gandi.js', 'andi/modules-wrapped/handi.js', 'andi/modules-wrapped/iandi.js', 'andi/modules-wrapped/landi.js', 'andi/modules-wrapped/sandi.js', 'andi/modules-wrapped/tandi.js'];
+
   // Step 1: Check if ANDI is already present
   const [{result: isPresent}] = await chrome.scripting.executeScript({
     target: { tabId },
@@ -57,7 +59,16 @@ chrome.action.onClicked.addListener(async (tab) => {
     world: 'MAIN'
   });
 
-  // Step 3: Inject ANDI
+  // Preload module scripts via scripting API to avoid CSP script-src blocks
+  if (andiModuleFiles.length) {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: andiModuleFiles,
+      world: 'MAIN'
+    });
+  }
+
+// Step 3: Inject ANDI
   await chrome.scripting.executeScript({
     target: { tabId },
     files: ['andi/andi.js'],

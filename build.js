@@ -11,6 +11,8 @@ const config = {
   jqueryTargetFile: './extension/lib/jquery.min.js',
   originalAndiFile: './andi/andi.js',
   targetAndiFile: './extension/andi/andi.js',
+  modulesSourceDir: './andi',
+  modulesWrappedDir: './extension/andi/modules-wrapped',
   readmeSourceFile: './readme.md',
   readmeTargetFile: './extension/README.md',
   privacySourceFile: './PRIVACY_POLICY.md',
@@ -83,6 +85,56 @@ const jqueryScriptReplacement = '<script src="../../lib/jquery.min.js"></script>
 
 // Store original andi.js content for restoration (in memory, no backup file)
 let originalAndiContent = null;
+let wrappedModules = [];
+
+/**
+ * Inject module file list and loader hook into extension/background.js
+ * so modules are pre-injected via chrome.scripting (bypassing page CSP).
+ */
+function patchBackgroundForModules() {
+  const bgPath = path.join(__dirname, 'extension', 'background.js');
+  if (!fs.existsSync(bgPath)) {
+    console.warn(`  ⚠ Warning: extension background.js not found at ${bgPath}`);
+    return;
+  }
+
+  if (!wrappedModules.length) {
+    console.warn('  ⚠ Warning: no wrapped modules found; skipping background patch');
+    return;
+  }
+
+  const bgContent = fs.readFileSync(bgPath, 'utf8');
+  const moduleArray = wrappedModules.map(m => `'${m}'`).join(', ');
+
+  const modulesConst = `  const andiModuleFiles = [${moduleArray}];`;
+
+  let updated = bgContent;
+
+  // Remove any existing preload block to avoid duplicates
+  const preloadBlockRegex = /\n\s*\/\/ Preload module scripts[\s\S]*?andiModuleFiles,[\s\S]*?}\);\n\s*}\n/;
+  if (preloadBlockRegex.test(updated)) {
+    updated = updated.replace(preloadBlockRegex, '\n');
+  }
+
+  // Insert module files constant after extAndiBase declaration
+  const extBaseRegex = /(const extAndiBase = chrome\.runtime\.getURL\('andi\/'\);)/;
+  if (!updated.includes('const andiModuleFiles') && extBaseRegex.test(updated)) {
+    updated = updated.replace(extBaseRegex, (match) => match + '\n\n' + modulesConst);
+  } else if (!extBaseRegex.test(updated)) {
+    console.warn('  ⚠ Warning: could not find extAndiBase declaration to inject module list.');
+  }
+
+  // Insert module injection after injecting andi.js
+  const injectAndiRegex = /(\/\/ Step 3: Inject ANDI[\s\S]*?files: \['andi\/andi\.js'\],[\s\S]*?\}\);)/m;
+  if (!updated.includes('Preload module scripts') && injectAndiRegex.test(updated)) {
+    updated = updated.replace(injectAndiRegex, (match) => `  // Preload module scripts via scripting API to avoid CSP script-src blocks\n  if (andiModuleFiles.length) {\n    await chrome.scripting.executeScript({\n      target: { tabId },\n      files: andiModuleFiles,\n      world: 'MAIN'\n    });\n  }\n\n` + match);
+  } else if (!injectAndiRegex.test(updated)) {
+    console.warn('  ⚠ Warning: could not find ANDI injection block to add module preload.');
+  }
+
+  fs.writeFileSync(bgPath, updated, 'utf8');
+  console.log('  ✓ Updated extension/background.js with module preload list');
+}
 
 /**
  * Get file modification time
@@ -184,6 +236,46 @@ function ensureJquery() {
 }
 
 /**
+ * Wrap module scripts so they expose a factory without polluting globals
+ * and record the list for injection via background.js (bypasses CSP).
+ */
+function wrapModules() {
+  const srcDir = config.modulesSourceDir;
+  const destDir = config.modulesWrappedDir;
+  if (!fs.existsSync(srcDir)) {
+    console.warn(`  ⚠ Warning: modules source dir missing at ${srcDir}`);
+    return;
+  }
+  fs.mkdirSync(destDir, { recursive: true });
+
+  const moduleFiles = fs.readdirSync(srcDir)
+    .filter(f => /^[a-z]andi\.js$/.test(f));
+
+  wrappedModules = [];
+
+  moduleFiles.forEach(file => {
+    const letter = file[0];
+    const srcPath = path.join(srcDir, file);
+    const destPath = path.join(destDir, file);
+    const content = fs.readFileSync(srcPath, 'utf8');
+
+    const wrapped = `// Auto-wrapped by build to allow CSP-safe module loading\n` +
+      `(function(){\n` +
+      `  window.ANDI_MODULES = window.ANDI_MODULES || {};\n` +
+      `  window.ANDI_MODULES['${letter}'] = function(){\n` +
+      `    var capturedInit = null;\n` +
+      `    (function(){\n${content}\n      if (typeof init_module === 'function') {\n        capturedInit = init_module;\n      } else if (typeof window.init_module === 'function') {\n        capturedInit = window.init_module;\n      }\n    })();\n` +
+      `    return capturedInit;\n` +
+      `  };\n` +
+      `})();\n`;
+
+    fs.writeFileSync(destPath, wrapped, 'utf8');
+    wrappedModules.push(`andi/modules-wrapped/${file}`);
+    console.log(`  ✓ Wrapped module ${file}`);
+  });
+}
+
+/**
  * Backup original file content in memory and apply modifications for extension build
  */
 function backupAndModifyAndi() {
@@ -197,13 +289,13 @@ function backupAndModifyAndi() {
   const hostRegex = /var\s+host_url\s*=\s*(?:\(function\(\)\s*{[\s\S]*?}\s*\)\(\)|"[^"]+"|\'[^\']+\');/m;
   const jquerySourceRegex = /var\s+jqueryDownloadSource\s*=\s*"https:\/\/ajax\.googleapis\.com\/ajax\/libs\/jquery\/";/;
   const iconsRegex = /(var\s+icons_url\s*=\s*host_url\+"icons\/";\s*)/;
-  const scriptSrcRegex = /script\.src\s*=\s*host_url\s*\+\s*module\s*\+\s*"andi\.js";/;
+  const scriptSrcBlockRegex = /\/\/Load the module's script[\s\S]*?document\.getElementsByTagName\("head"\)\[0\]\.appendChild\(script\);/m;
 
   let modifiedContent = originalContent
     .replace(hostRegex, extensionHostUrl)
     .replace(jquerySourceRegex, extensionJqueryDownloadSource)
     .replace(iconsRegex, `$1\n\n${ttHelper}\n`)
-    .replace(scriptSrcRegex, 'script.src = (window.ANDI_TRUSTED && window.ANDI_TRUSTED.makeScriptURL) ? window.ANDI_TRUSTED.makeScriptURL(host_url + module + "andi.js") : (host_url + module + "andi.js");');
+    .replace(scriptSrcBlockRegex, `//Load the module's script\n    var factory = (window.ANDI_MODULES && window.ANDI_MODULES[module]);\n    var moduleInit = factory ? factory() : null;\n\n    $("#andiModuleScript").remove(); //Remove previously added module script\n    $("#andiModuleCss").remove();//remove previously added module css\n\n    if (typeof moduleInit === "function") {\n      init_module = moduleInit;\n      init_module();\n    } else {\n      console.error("ANDI: module factory not found for " + module);\n    }`);
   
   fs.writeFileSync(config.targetAndiFile, modifiedContent, 'utf8');
   console.log(`  ✓ ${config.targetAndiFile} (modified with chrome.runtime.getURL)`);
@@ -259,6 +351,14 @@ async function build() {
   
   // Step 1: Ensure jQuery is present in lib
   await ensureJquery();
+
+  // Step 1.5: Wrap modules for CSP-safe injection
+  console.log('\n🧩 Wrapping module scripts for CSP-safe injection...');
+  wrapModules();
+
+  // Step 1.6: Patch background.js to preload wrapped modules
+  console.log('\n🛰️  Updating background.js with module preload list...');
+  patchBackgroundForModules();
 
   // Step 2: Copy andi directory with HTML processing
   console.log('\n📂 Copying andi directory (with jQuery CDN replacement)...');

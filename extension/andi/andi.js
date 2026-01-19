@@ -368,18 +368,18 @@ AndiModule.launchModule = function(module){
 		andiCheck.areThereMoreExclusiveChildrenThanParents();
 
 		//Load the module's script
-		var script = document.createElement("script");
-		var done = false;
-		script.src = (window.ANDI_TRUSTED && window.ANDI_TRUSTED.makeScriptURL) ? window.ANDI_TRUSTED.makeScriptURL(host_url + module + "andi.js") : (host_url + module + "andi.js");
-		script.type="text/javascript";
-		script.id="andiModuleScript";
-		script.onload = script.onreadystatechange = function(){if(!done && (!this.readyState || this.readyState=="loaded" || this.readyState=="complete")){done=true; init_module();}};
+    var factory = (window.ANDI_MODULES && window.ANDI_MODULES[module]);
+    var moduleInit = factory ? factory() : null;
 
-		$("#andiModuleScript").remove(); //Remove previously added module script
-		$("#andiModuleCss").remove();//remove previously added module css
+    $("#andiModuleScript").remove(); //Remove previously added module script
+    $("#andiModuleCss").remove();//remove previously added module css
 
-		//Execute the module's script
-		document.getElementsByTagName("head")[0].appendChild(script);
+    if (typeof moduleInit === "function") {
+      init_module = moduleInit;
+      init_module();
+    } else {
+      console.error("ANDI: module factory not found for " + module);
+    }
 
 		$("#ANDI508").removeClass().addClass("ANDI508-module-"+module).show();
 
