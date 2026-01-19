@@ -325,6 +325,28 @@ function backupAndModifyAndi() {
   const iconsRegex = /(var\s+icons_url\s*=\s*host_url\+"icons\/";\s*)/;
   const scriptSrcBlockRegex = /\/\/Load the module's script[\s\S]*?document\.getElementsByTagName\("head"\)\[0\]\.appendChild\(script\);/m;
 
+  // CSP Fix Regexes
+  const manualCssRegex = /\/\/Load andi\.css file immediately[\s\S]*?\}\)\(\);/m;
+  const wrapInnerRegex = /var\s+body_padding\s*=\s*"padding:"\s*\+\s*\$\(body\)\.css\("padding-top"\)[\s\S]*?\.prepend\(andiBar\);\s*\/\/insert ANDI display into body/m;
+  const javascriptVoidRegex = /(listItemHtml\s*\+=\s*["'])href='javascript:void\(0\)'/g;
+  const frameStyleRegex = /<style>body\{margin-left:1em;\}[\s\S]*?<\/style>/;
+
+  const wrapInnerReplacement = [
+    '',
+    '		//CSP Fix: Use .css() instead of style attribute',
+    '		var paddingVal = $(body).css("padding-top")+" "+$(body).css("padding-right")+" "+',
+    '			$(body).css("padding-bottom")+" "+$(body).css("padding-left");',
+    '		var marginVal = $(body).css("margin-top")+" 0px "+',
+    '			$(body).css("margin-bottom")+" 0px";',
+    '',
+    '		$("html").addClass("ANDI508-testPage");',
+    '		$(body)',
+    '			.addClass("ANDI508-testPage")',
+    '			.wrapInner("<div id=\'ANDI508-testPage\'></div>") //removed inline style',
+    '			.prepend(andiBar);',
+    '		$("#ANDI508-testPage").css({"padding": paddingVal, "margin": marginVal});'
+  ].join("\n");
+
   const dynamicCssHelper = `// Dynamic CSS injection helper for CSP compliance
     window.andiRequestModuleCss = function(moduleLetter) {
       if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
@@ -343,6 +365,10 @@ function backupAndModifyAndi() {
     .replace(hostRegex, extensionHostUrl)
     .replace(jquerySourceRegex, extensionJqueryDownloadSource)
     .replace(iconsRegex, `$1\n\n${ttHelper}\n\n${dynamicCssHelper}\n`)
+    .replace(manualCssRegex, '// Manual CSS injection removed for extension (handled by background.js)')
+    .replace(wrapInnerRegex, wrapInnerReplacement)
+    .replace(javascriptVoidRegex, "$1href='#'")
+    .replace(frameStyleRegex, "")
     .replace(scriptSrcBlockRegex, `//Load the module's script\n    var factory = (window.ANDI_MODULES && window.ANDI_MODULES[module]);\n    var moduleInit = factory ? factory() : null;\n\n    $("#andiModuleScript").remove(); //Remove previously added module script\n    $("#andiModuleCss").remove();//remove previously added module css\n\n    if (typeof moduleInit === "function") {\n      // Request module CSS injection via message\n      if (typeof window.andiRequestModuleCss === 'function') {\n        window.andiRequestModuleCss(module);\n      }\n      init_module = moduleInit;\n      init_module();\n    } else {\n      console.error("ANDI: module factory not found for " + module);\n    }`);
   
   fs.writeFileSync(config.targetAndiFile, modifiedContent, 'utf8');

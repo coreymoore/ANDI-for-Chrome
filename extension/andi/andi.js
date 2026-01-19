@@ -75,19 +75,7 @@ var icons_url = host_url+"icons/";
         );
       }
     };
-//Load andi.css file immediately to minimize page flash
-(function(){
-	var head = document.getElementsByTagName("head")[0];
-	var andiCss = document.createElement("link");
-	andiCss.href = host_url + "andi.css";
-	andiCss.type = "text/css";
-	andiCss.rel = "stylesheet";
-	andiCss.id = "ANDI508-css";
-	var prevCss = document.getElementById("ANDI508-css");
-	if(prevCss)//remove already inserted CSS to improve performance on consequtive favelet launches
-		head.removeChild(prevCss);
-	head.appendChild(andiCss);
-})();
+// Manual CSS injection removed for extension (handled by background.js)
 
 //Representation of Empty String that will appear on screen
 AndiCheck.emptyString = "\"\"";
@@ -159,7 +147,7 @@ function launchAndi(){(window.andi508 = function(){
 	if(document.getElementsByTagName("frameset")[0]){
 		if(confirm("ANDI has detected frames:\nPress OK to stay on the page.\nPress Cancel to test an individual frame.") !== true){
 			var oldLocation = document.location;
-			var framesSelectionHead = "<head><title>ANDI Frame Selection</title><style>body{margin-left:1em;}*{font-family:Verdana,Sans-Serif;font-size:12pt}h1{font-weight:bold;font-size:20pt}h2{font-weight:bold;font-size:13pt}li{margin:7px}a{font-family:monospace;margin-right:8px}</style></head>";
+			var framesSelectionHead = "<head><title>ANDI Frame Selection</title></head>";
 			var framesSelectionBody = "<h1 id='ANDI508-frameSelectionUI'>ANDI</h1><p>This page uses frames. The page title is: '"+document.title+"'.<br /><br />Each frame must be tested individually. Select a frame from the list below, then launch ANDI.</p><h2>Frames:</h2><ol>";
 			var title, titleDisplay, framesrc;
 			$("frame").each(function(){
@@ -666,14 +654,19 @@ function andiReady(){
 		var body = $("body").first();
 
 		//Preserve original body padding and margin
-		var body_padding = "padding:"+$(body).css("padding-top")+" "+$(body).css("padding-right")+" "+$(body).css("padding-bottom")+" "+$(body).css("padding-left")+"; ";
-		var body_margin = "margin:"+$(body).css("margin-top")+" 0px "+$(body).css("margin-bottom")+" 0px; ";
+		
+		//CSP Fix: Use .css() instead of style attribute
+		var paddingVal = $(body).css("padding-top")+" "+$(body).css("padding-right")+" "+
+			$(body).css("padding-bottom")+" "+$(body).css("padding-left");
+		var marginVal = $(body).css("margin-top")+" 0px "+
+			$(body).css("margin-bottom")+" 0px";
 
 		$("html").addClass("ANDI508-testPage");
 		$(body)
 			.addClass("ANDI508-testPage")
-			.wrapInner("<div id='ANDI508-testPage' style='"+body_padding+body_margin+"' ></div>") //Add an outer container to the test page
-			.prepend(andiBar); //insert ANDI display into body
+			.wrapInner("<div id='ANDI508-testPage'></div>") //removed inline style
+			.prepend(andiBar);
+		$("#ANDI508-testPage").css({"padding": paddingVal, "margin": marginVal});
 
 	}
 
@@ -3828,7 +3821,7 @@ function AndiAlerter(){
 		var listItemHtml = " tabindex='-1' ";
 		if(elementIndex !== 0){
 			//Yes, this alert should point to a focusable element. Insert as link:
-			listItemHtml += "href='javascript:void(0)' data-andi508-relatedindex='"+elementIndex+"' aria-label='"+alertObject.level+": "+message+" Element #"+elementIndex+"'>"+
+			listItemHtml += "href='#' data-andi508-relatedindex='"+elementIndex+"' aria-label='"+alertObject.level+": "+message+" Element #"+elementIndex+"'>"+
 			"<img alt='"+alertObject.level+"' role='presentation' src='"+icons_url+alertObject.level+".png' />"+
 			message+"</a></li>";
 		}
