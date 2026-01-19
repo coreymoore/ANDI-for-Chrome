@@ -1,0 +1,57 @@
+/*==tANDI==*/
+	/*==ANDI Bar==*/
+	#ANDI508 #ANDI508-elementControls #ANDI508-nextTable-button,
+	#ANDI508 #ANDI508-elementControls #ANDI508-prevTable-button
+		{padding:2px 3px 0px 2px !important;}
+	#ANDI508 .ANDI508-display-headerText
+		{color:#e75dff !important;}
+	#ANDI508 .ANDI508-display-headers
+		{color:#ffbdeb !important;}
+		
+	/*=Test Page=*/
+	#ANDI508-testPage.tANDI508-testPage th.ANDI508-element.ANDI508-highlight,
+	#ANDI508-testPage.tANDI508-testPage [role=columnheader].ANDI508-element.ANDI508-highlight,
+	#ANDI508-testPage.tANDI508-testPage [role=rowheader].ANDI508-element.ANDI508-highlight,
+	#ANDI508-testPage.tANDI508-testPage table[role="presentation"].ANDI508-element.ANDI508-highlight
+		{border:1.5px dashed #a02178 !important; outline:0 !important; animation:pulse_tANDI_header 3s infinite;}
+		@keyframes pulse_tANDI_header{
+			50% {border-color:#b03188 !important;}
+		}
+	#ANDI508-testPage.tANDI508-testPage td.ANDI508-element.ANDI508-highlight,
+	#ANDI508-testPage.tANDI508-testPage [role=cell].ANDI508-element.ANDI508-highlight,
+	#ANDI508-testPage.tANDI508-testPage [role=gridcell].ANDI508-element.ANDI508-highlight
+		{border:1.5px dotted #cd7aa8 !important; outline:0 !important; animation:pulse_tANDI 3s infinite;}
+		@keyframes pulse_tANDI{
+			50% {border-color:#c26f9d !important;}
+		}
+	#ANDI508-testPage.tANDI508-testPage table.ANDI508-element.ANDI508-highlight,
+	#ANDI508-testPage.tANDI508-testPage [role=table].ANDI508-element.ANDI508-highlight,
+	#ANDI508-testPage.tANDI508-testPage [role=grid].ANDI508-element.ANDI508-highlight
+		{outline:0 !important;}
+	
+	#ANDI508-testPage.tANDI508-testPage .ANDI508-element.ANDI508-highlight.ANDI508-element-danger
+		{border:2px dashed #df3131 !important; outline:0 !important;}
+	#ANDI508-testPage.tANDI508-testPage table.ANDI508-element.ANDI508-highlight.ANDI508-element-danger,
+	#ANDI508-testPage.tANDI508-testPage [role=table].ANDI508-element.ANDI508-highlight.ANDI508-element-danger,
+	#ANDI508-testPage.tANDI508-testPage [role=grid].ANDI508-element.ANDI508-highlight.ANDI508-element-danger
+		{border:4px dashed #df3131 !important; outline:0 !important;}	
+	
+	#ANDI508-testPage.tANDI508-testPage td.ANDI508-highlight.tANDI508-highlight,
+	#ANDI508-testPage.tANDI508-testPage [role=cell].ANDI508-highlight.tANDI508-highlight,
+	#ANDI508-testPage.tANDI508-testPage [role=gridcell].ANDI508-highlight.tANDI508-highlight
+		{background:none !important; background-color:#ffe6f3 !important;}
+	#ANDI508-testPage.tANDI508-testPage th.ANDI508-highlight.tANDI508-highlight,
+	#ANDI508-testPage.tANDI508-testPage [role=columnheader].ANDI508-highlight.tANDI508-highlight,
+	#ANDI508-testPage.tANDI508-testPage [role=rowheader].ANDI508-highlight.tANDI508-highlight
+		{background:none !important; background-color:#fdabd6 !important;}
+	#ANDI508-testPage.tANDI508-testPage .ANDI508-highlight.tANDI508-highlight, 
+	#ANDI508-testPage.tANDI508-testPage .ANDI508-highlight.tANDI508-highlight *
+		{color:black !important;}
+
+	#ANDI508-testPage.tANDI508-testPage .ANDI508-element.ANDI508-highlight.ANDI508-element-active
+		{outline:4px solid deeppink !important; border-color:transparent !important}
+	#ANDI508-testPage.tANDI508-testPage table.ANDI508-element.ANDI508-highlight.ANDI508-element-active,
+	#ANDI508-testPage.tANDI508-testPage [role=table].ANDI508-element.ANDI508-highlight.ANDI508-element-active,
+	#ANDI508-testPage.tANDI508-testPage [role=grid].ANDI508-element.ANDI508-highlight.ANDI508-element-active
+		{border:4px solid deeppink !important; outline:0 !important;}
+		

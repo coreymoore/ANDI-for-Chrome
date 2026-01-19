@@ -39,27 +39,6 @@ chrome.action.onClicked.addListener(async (tab) => {
     world: 'MAIN'
   });
 
-  // Step 1.5: Inject Trusted Types policy to allow innerHTML/html() operations (for pages with strict CSP)
-  // (Note: a declarative content script in manifest also handles this at document_start for early coverage)
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    func: () => {
-      if (window.trustedTypes) {
-        try {
-          window.trustedTypes.createPolicy('default', {
-            createHTML: (s) => s,
-            createScript: (s) => s,
-            createScriptURL: (s) => s,
-            createURL: (s) => s
-          });
-        } catch (e) {
-          // Policy already exists or creation failed; ignore
-        }
-      }
-    },
-    world: 'MAIN'
-  });
-
   if (!hasJquery) {
     await chrome.scripting.executeScript({
       target: { tabId },

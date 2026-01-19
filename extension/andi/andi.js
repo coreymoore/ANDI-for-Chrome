@@ -8,23 +8,74 @@ var andiVersionNumber = "29.2.2";
 // ANDI CONFIG: //
 //==============//
 //URLs
-var host_url = "https://www.ssa.gov/accessibility/andi/";
+var host_url = (function() {
+  if (typeof window === "undefined") {
+    throw new Error("ANDI: window is undefined; host_url cannot be determined. Ensure ANDI is running in a browser context.");
+  }
+  if (typeof window.host_url === "string" && window.host_url.length > 0) {
+    return window.host_url;
+  }
+  throw new Error("ANDI: window.host_url is undefined or empty; ANDI assets cannot be loaded. Ensure background.js sets window.host_url before loading andi.js.");
+})();
 var help_url = host_url+"help/";
 var icons_url = host_url+"icons/";
 
-//Load andi.css file immediately to minimize page flash
-(function(){
-	var head = document.getElementsByTagName("head")[0];
-	var andiCss = document.createElement("link");
-	andiCss.href = host_url + "andi.css";
-	andiCss.type = "text/css";
-	andiCss.rel = "stylesheet";
-	andiCss.id = "ANDI508-css";
-	var prevCss = document.getElementById("ANDI508-css");
-	if(prevCss)//remove already inserted CSS to improve performance on consequtive favelet launches
-		head.removeChild(prevCss);
-	head.appendChild(andiCss);
+
+
+// Trusted Types helper injected by extension build
+(function() {
+  if (!window.trustedTypes) return;
+  
+  var policy = null;
+  try {
+    policy = window.trustedTypes.createPolicy('andi-policy', {
+      createHTML: function(s) { return s; },
+      createScript: function(s) { return s; },
+      createScriptURL: function(s) { return s; }
+    });
+  } catch(e) {
+    // Fallback to default policy if it exists
+    if (window.trustedTypes.defaultPolicy) {
+       policy = window.trustedTypes.defaultPolicy;
+    }
+  }
+  
+  if (!policy) return;
+  
+  var makeHTML = function(str) { return policy.createHTML(str); };
+  var makeScriptURL = function(str) { return policy.createScriptURL(str); };
+  
+  window.ANDI_TRUSTED = window.ANDI_TRUSTED || {};
+  window.ANDI_TRUSTED.makeScriptURL = makeScriptURL;
+  
+  // Patch jQuery.htmlPrefilter to auto-wrap strings in TrustedHTML
+  // This covers $() creation, .html(), .append(), .wrapInner(), etc.
+  if (window.jQuery) {
+    var originalPrefilter = window.jQuery.htmlPrefilter;
+    window.jQuery.htmlPrefilter = function(html) {
+      var result = originalPrefilter ? originalPrefilter(html) : html;
+      if (typeof result === 'string') {
+        return makeHTML(result);
+      }
+      return result;
+    };
+  }
 })();
+
+// Dynamic CSS injection helper for CSP compliance
+    window.andiRequestModuleCss = function(moduleLetter) {
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage(
+          { action: 'injectModuleCss', module: moduleLetter },
+          function(response) {
+            if (response && !response.success) {
+              console.warn('Failed to inject CSS for module:', moduleLetter);
+            }
+          }
+        );
+      }
+    };
+// Manual CSS injection removed for extension (handled by background.js)
 
 //Representation of Empty String that will appear on screen
 AndiCheck.emptyString = "\"\"";
@@ -96,7 +147,7 @@ function launchAndi(){(window.andi508 = function(){
 	if(document.getElementsByTagName("frameset")[0]){
 		if(confirm("ANDI has detected frames:\nPress OK to stay on the page.\nPress Cancel to test an individual frame.") !== true){
 			var oldLocation = document.location;
-			var framesSelectionHead = "<head><title>ANDI Frame Selection</title><style>body{margin-left:1em;}*{font-family:Verdana,Sans-Serif;font-size:12pt}h1{font-weight:bold;font-size:20pt}h2{font-weight:bold;font-size:13pt}li{margin:7px}a{font-family:monospace;margin-right:8px}</style></head>";
+			var framesSelectionHead = "<head><title>ANDI Frame Selection</title></head>";
 			var framesSelectionBody = "<h1 id='ANDI508-frameSelectionUI'>ANDI</h1><p>This page uses frames. The page title is: '"+document.title+"'.<br /><br />Each frame must be tested individually. Select a frame from the list below, then launch ANDI.</p><h2>Frames:</h2><ol>";
 			var title, titleDisplay, framesrc;
 			$("frame").each(function(){
@@ -319,18 +370,22 @@ AndiModule.launchModule = function(module){
 		andiCheck.areThereMoreExclusiveChildrenThanParents();
 
 		//Load the module's script
-		var script = document.createElement("script");
-		var done = false;
-		script.src = host_url + module + "andi.js";
-		script.type="text/javascript";
-		script.id="andiModuleScript";
-		script.onload = script.onreadystatechange = function(){if(!done && (!this.readyState || this.readyState=="loaded" || this.readyState=="complete")){done=true; init_module();}};
+    var factory = (window.ANDI_MODULES && window.ANDI_MODULES[module]);
+    var moduleInit = factory ? factory() : null;
 
-		$("#andiModuleScript").remove(); //Remove previously added module script
-		$("#andiModuleCss").remove();//remove previously added module css
+    $("#andiModuleScript").remove(); //Remove previously added module script
+    $("#andiModuleCss").remove();//remove previously added module css
 
-		//Execute the module's script
-		document.getElementsByTagName("head")[0].appendChild(script);
+    if (typeof moduleInit === "function") {
+      // Request module CSS injection via message
+      if (typeof window.andiRequestModuleCss === 'function') {
+        window.andiRequestModuleCss(module);
+      }
+      init_module = moduleInit;
+      init_module();
+    } else {
+      console.error("ANDI: module factory not found for " + module);
+    }
 
 		$("#ANDI508").removeClass().addClass("ANDI508-module-"+module).show();
 
@@ -599,14 +654,19 @@ function andiReady(){
 		var body = $("body").first();
 
 		//Preserve original body padding and margin
-		var body_padding = "padding:"+$(body).css("padding-top")+" "+$(body).css("padding-right")+" "+$(body).css("padding-bottom")+" "+$(body).css("padding-left")+"; ";
-		var body_margin = "margin:"+$(body).css("margin-top")+" 0px "+$(body).css("margin-bottom")+" 0px; ";
+		
+		//CSP Fix: Use .css() instead of style attribute
+		var paddingVal = $(body).css("padding-top")+" "+$(body).css("padding-right")+" "+
+			$(body).css("padding-bottom")+" "+$(body).css("padding-left");
+		var marginVal = $(body).css("margin-top")+" 0px "+
+			$(body).css("margin-bottom")+" 0px";
 
 		$("html").addClass("ANDI508-testPage");
 		$(body)
 			.addClass("ANDI508-testPage")
-			.wrapInner("<div id='ANDI508-testPage' style='"+body_padding+body_margin+"' ></div>") //Add an outer container to the test page
-			.prepend(andiBar); //insert ANDI display into body
+			.wrapInner("<div id='ANDI508-testPage'></div>") //removed inline style
+			.prepend(andiBar);
+		$("#ANDI508-testPage").css({"padding": paddingVal, "margin": marginVal});
 
 	}
 
@@ -3761,7 +3821,7 @@ function AndiAlerter(){
 		var listItemHtml = " tabindex='-1' ";
 		if(elementIndex !== 0){
 			//Yes, this alert should point to a focusable element. Insert as link:
-			listItemHtml += "href='javascript:void(0)' data-andi508-relatedindex='"+elementIndex+"' aria-label='"+alertObject.level+": "+message+" Element #"+elementIndex+"'>"+
+			listItemHtml += "href='#' data-andi508-relatedindex='"+elementIndex+"' aria-label='"+alertObject.level+": "+message+" Element #"+elementIndex+"'>"+
 			"<img alt='"+alertObject.level+"' role='presentation' src='"+icons_url+alertObject.level+".png' />"+
 			message+"</a></li>";
 		}
@@ -4141,7 +4201,7 @@ TestPageData.page_using_caption = false;
 //It will also determine if an old IE version is being used
 var jqueryPreferredVersion = "3.7.1"; //The preferred (latest) version of jQuery we want
 var jqueryMinimumVersion = "1.9.1"; //The minimum version of jQuery we allow ANDI to use
-var jqueryDownloadSource = "https://ajax.googleapis.com/ajax/libs/jquery/"; //where we are downloading jquery from
+var jqueryDownloadSource = ""; // Disabled for extension build //where we are downloading jquery from
 var oldIE = false; //used to determine if old version of IE is being used.
 (function(){
 	//Determine if old IE compatability mode

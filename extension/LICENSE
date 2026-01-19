@@ -1,0 +1,59 @@
+# ANDI for Chrome - Licenses and Attributions
+
+## ANDI (Accessible Name & Description Inspector)
+
+ANDI is licensed under the **Apache License 2.0**
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this library except in compliance with the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+
+**ANDI is created and maintained by:**
+- Social Security Administration - Accessible Solutions Branch (original ANDI)
+- Corey Moore (ANDI for Chrome port)
+
+---
+
+## jQuery
+
+jQuery is licensed under the **MIT License**
+
+jQuery v3.7.1
+Copyright OpenJS Foundation and other contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+**jQuery is available at:** https://jquery.com/
+
+---
+
+## Third-Party Code
+
+ANDI includes code adapted from:
+
+### jQuery UI
+
+Portions of the focusable detection code in ANDI are based on jQuery UI's implementation.
+
+jQuery UI is licensed under the MIT License.
+Copyright jQuery Foundation and other contributors
+https://jqueryui.com/
+
+---
+
+## Chrome Extension Infrastructure
+
+This extension uses the Chrome Extensions API as documented at:
+https://developer.chrome.com/docs/extensions/
+
+---
+
+**Questions about licensing?** Visit:
+- https://github.com/SSAgov/ANDI (Original ANDI project)
+- https://github.com/Corey-Moore/ANDI-for-Chrome (Chrome extension)
