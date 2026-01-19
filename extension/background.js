@@ -1,3 +1,20 @@
+const andiModuleCssMap = { 'c': 'andi/candi.css', 'g': 'andi/gandi.css', 'h': 'andi/handi.css', 'i': 'andi/iandi.css', 'l': 'andi/landi.css', 's': 'andi/sandi.css', 't': 'andi/tandi.css' };
+
+// Handle requests from content script to inject module CSS
+chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+  if (request.action === 'injectModuleCss' && request.module && andiModuleCssMap[request.module]) {
+    try {
+      await chrome.scripting.insertCSS({
+        target: { tabId: sender.tab.id },
+        files: [andiModuleCssMap[request.module]]
+      });
+      sendResponse({ success: true });
+    } catch (e) {
+      console.warn('Failed to inject module CSS for', request.module, e);
+      sendResponse({ success: false });
+    }
+  }
+});
 // background.js — service worker for toggling ANDI
 // Uses the scripting API to inject jquery and ANDI into the active tab (main world)
 

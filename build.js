@@ -86,6 +86,7 @@ const jqueryScriptReplacement = '<script src="../../lib/jquery.min.js"></script>
 // Store original andi.js content for restoration (in memory, no backup file)
 let originalAndiContent = null;
 let wrappedModules = [];
+let andiModuleCssFiles = [];
 
 /**
  * Inject module file list and loader hook into extension/background.js
@@ -105,8 +106,14 @@ function patchBackgroundForModules() {
 
   const bgContent = fs.readFileSync(bgPath, 'utf8');
   const moduleArray = wrappedModules.map(m => `'${m}'`).join(', ');
+  const cssMap = andiModuleCssFiles.length > 0 
+    ? `const andiModuleCssMap = { ${andiModuleCssFiles.map(css => {
+        const match = css.match(/andi\/(.)andi\.css/);
+        return match ? `'${match[1]}': '${css}'` : null;
+      }).filter(Boolean).join(', ')} };`
+    : 'const andiModuleCssMap = {};';
 
-  const modulesConst = `  const andiModuleFiles = [${moduleArray}];`;
+  const modulesConst = `  const andiModuleFiles = [${moduleArray}];\n  ${cssMap}`;
 
   let updated = bgContent;
 
@@ -124,6 +131,23 @@ function patchBackgroundForModules() {
     console.warn('  ⚠ Warning: could not find extAndiBase declaration to inject module list.');
   }
 
+  // Add message listener for dynamic CSS injection at the top with CSS map
+  const messageListenerRegex = /(chrome\.action\.onClicked\.addListener\(async \(tab\))/;
+  
+  // Remove any existing message listener block - matches from andiModuleCssMap to // background.js comment
+  const existingListenerRegex = /^const andiModuleCssMap[\s\S]*?^\/\/ background\.js/m;
+  updated = updated.replace(existingListenerRegex, '// background.js');
+  
+  if (messageListenerRegex.test(updated)) {
+    const cssMapEntries = andiModuleCssFiles.map(css => {
+      const match = css.match(/andi\/(.)andi\.css/);
+      return match ? `'${match[1]}': '${css}'` : null;
+    }).filter(Boolean).join(', ');
+    const cssMapDecl = `const andiModuleCssMap = { ${cssMapEntries} };\n\n`;
+    const messageListener = `${cssMapDecl}// Handle requests from content script to inject module CSS\nchrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {\n  if (request.action === 'injectModuleCss' && request.module && andiModuleCssMap[request.module]) {\n    try {\n      await chrome.scripting.insertCSS({\n        target: { tabId: sender.tab.id },\n        files: [andiModuleCssMap[request.module]]\n      });\n      sendResponse({ success: true });\n    } catch (e) {\n      console.warn('Failed to inject module CSS for', request.module, e);\n      sendResponse({ success: false });\n    }\n  }\n});\n`;
+    updated = messageListener + updated;
+  }
+
   // Insert module injection after injecting andi.js
   const injectAndiRegex = /(\/\/ Step 3: Inject ANDI[\s\S]*?files: \['andi\/andi\.js'\],[\s\S]*?\}\);)/m;
   if (!updated.includes('Preload module scripts') && injectAndiRegex.test(updated)) {
@@ -133,7 +157,7 @@ function patchBackgroundForModules() {
   }
 
   fs.writeFileSync(bgPath, updated, 'utf8');
-  console.log('  ✓ Updated extension/background.js with module preload list');
+  console.log('  ✓ Updated extension/background.js with module CSS map and message listener');
 }
 
 /**
@@ -252,6 +276,7 @@ function wrapModules() {
     .filter(f => /^[a-z]andi\.js$/.test(f));
 
   wrappedModules = [];
+  andiModuleCssFiles = [];
 
   moduleFiles.forEach(file => {
     const letter = file[0];
@@ -271,7 +296,16 @@ function wrapModules() {
 
     fs.writeFileSync(destPath, wrapped, 'utf8');
     wrappedModules.push(`andi/modules-wrapped/${file}`);
-    console.log(`  ✓ Wrapped module ${file}`);
+    
+    // Track CSS file if it exists
+    const cssFile = `${letter}andi.css`;
+    const cssPath = path.join(srcDir, cssFile);
+    if (fs.existsSync(cssPath)) {
+      andiModuleCssFiles.push(`andi/${cssFile}`);
+      console.log(`  ✓ Wrapped module ${file} (with CSS)`);
+    } else {
+      console.log(`  ✓ Wrapped module ${file}`);
+    }
   });
 }
 
@@ -291,11 +325,25 @@ function backupAndModifyAndi() {
   const iconsRegex = /(var\s+icons_url\s*=\s*host_url\+"icons\/";\s*)/;
   const scriptSrcBlockRegex = /\/\/Load the module's script[\s\S]*?document\.getElementsByTagName\("head"\)\[0\]\.appendChild\(script\);/m;
 
+  const dynamicCssHelper = `// Dynamic CSS injection helper for CSP compliance
+    window.andiRequestModuleCss = function(moduleLetter) {
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage(
+          { action: 'injectModuleCss', module: moduleLetter },
+          function(response) {
+            if (response && !response.success) {
+              console.warn('Failed to inject CSS for module:', moduleLetter);
+            }
+          }
+        );
+      }
+    };`;
+
   let modifiedContent = originalContent
     .replace(hostRegex, extensionHostUrl)
     .replace(jquerySourceRegex, extensionJqueryDownloadSource)
-    .replace(iconsRegex, `$1\n\n${ttHelper}\n`)
-    .replace(scriptSrcBlockRegex, `//Load the module's script\n    var factory = (window.ANDI_MODULES && window.ANDI_MODULES[module]);\n    var moduleInit = factory ? factory() : null;\n\n    $("#andiModuleScript").remove(); //Remove previously added module script\n    $("#andiModuleCss").remove();//remove previously added module css\n\n    if (typeof moduleInit === "function") {\n      init_module = moduleInit;\n      init_module();\n    } else {\n      console.error("ANDI: module factory not found for " + module);\n    }`);
+    .replace(iconsRegex, `$1\n\n${ttHelper}\n\n${dynamicCssHelper}\n`)
+    .replace(scriptSrcBlockRegex, `//Load the module's script\n    var factory = (window.ANDI_MODULES && window.ANDI_MODULES[module]);\n    var moduleInit = factory ? factory() : null;\n\n    $("#andiModuleScript").remove(); //Remove previously added module script\n    $("#andiModuleCss").remove();//remove previously added module css\n\n    if (typeof moduleInit === "function") {\n      // Request module CSS injection via message\n      if (typeof window.andiRequestModuleCss === 'function') {\n        window.andiRequestModuleCss(module);\n      }\n      init_module = moduleInit;\n      init_module();\n    } else {\n      console.error("ANDI: module factory not found for " + module);\n    }`);
   
   fs.writeFileSync(config.targetAndiFile, modifiedContent, 'utf8');
   console.log(`  ✓ ${config.targetAndiFile} (modified with chrome.runtime.getURL)`);

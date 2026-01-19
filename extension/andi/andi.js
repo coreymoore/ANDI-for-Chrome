@@ -61,6 +61,20 @@ var icons_url = host_url+"icons/";
     };
   }
 })();
+
+// Dynamic CSS injection helper for CSP compliance
+    window.andiRequestModuleCss = function(moduleLetter) {
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage(
+          { action: 'injectModuleCss', module: moduleLetter },
+          function(response) {
+            if (response && !response.success) {
+              console.warn('Failed to inject CSS for module:', moduleLetter);
+            }
+          }
+        );
+      }
+    };
 //Load andi.css file immediately to minimize page flash
 (function(){
 	var head = document.getElementsByTagName("head")[0];
@@ -375,6 +389,10 @@ AndiModule.launchModule = function(module){
     $("#andiModuleCss").remove();//remove previously added module css
 
     if (typeof moduleInit === "function") {
+      // Request module CSS injection via message
+      if (typeof window.andiRequestModuleCss === 'function') {
+        window.andiRequestModuleCss(module);
+      }
       init_module = moduleInit;
       init_module();
     } else {
