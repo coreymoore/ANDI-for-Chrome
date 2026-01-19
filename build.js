@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const { execSync } = require('child_process');
 
 // Configuration
 const config = {
@@ -18,7 +19,7 @@ const config = {
 };
 
 // jQuery source to download if missing
-const jqueryDownloadUrl = 'https://code.jquery.com/jquery-3.7.1.min.js';
+const jqueryDownloadUrl = 'https://code.jquery.com/jquery-4.0.0.min.js';
 
 // Extension version: use window.host_url if background.js set it; otherwise throw
 const extensionHostUrl = `var host_url = (function() {
@@ -33,6 +34,48 @@ const extensionHostUrl = `var host_url = (function() {
 
 const originalJqueryDownloadSource = `var jqueryDownloadSource = "https://ajax.googleapis.com/ajax/libs/jquery/";`;
 const extensionJqueryDownloadSource = `var jqueryDownloadSource = ""; // Disabled for extension build`;
+
+// Trusted Types helper to wrap strings before passing to jQuery 4.0.0
+// This is necessary because jQuery 4.0 supports TrustedHTML but doesn't auto-sanitize strings
+const ttHelper = `// Trusted Types helper injected by extension build
+(function() {
+  if (!window.trustedTypes) return;
+  
+  var policy = null;
+  try {
+    policy = window.trustedTypes.createPolicy('andi-policy', {
+      createHTML: function(s) { return s; },
+      createScript: function(s) { return s; },
+      createScriptURL: function(s) { return s; }
+    });
+  } catch(e) {
+    // Fallback to default policy if it exists
+    if (window.trustedTypes.defaultPolicy) {
+       policy = window.trustedTypes.defaultPolicy;
+    }
+  }
+  
+  if (!policy) return;
+  
+  var makeHTML = function(str) { return policy.createHTML(str); };
+  var makeScriptURL = function(str) { return policy.createScriptURL(str); };
+  
+  window.ANDI_TRUSTED = window.ANDI_TRUSTED || {};
+  window.ANDI_TRUSTED.makeScriptURL = makeScriptURL;
+  
+  // Patch jQuery.htmlPrefilter to auto-wrap strings in TrustedHTML
+  // This covers $() creation, .html(), .append(), .wrapInner(), etc.
+  if (window.jQuery) {
+    var originalPrefilter = window.jQuery.htmlPrefilter;
+    window.jQuery.htmlPrefilter = function(html) {
+      var result = originalPrefilter ? originalPrefilter(html) : html;
+      if (typeof result === 'string') {
+        return makeHTML(result);
+      }
+      return result;
+    };
+  }
+})();`;
 
 // Regex pattern for jQuery CDN URLs in HTML
 const jqueryScriptRegex = /<script[^>]*src=["']https?:\/\/[^"']*jquery[^"']*\.min\.js["'][^>]*><\/script>/gi;
@@ -153,10 +196,14 @@ function backupAndModifyAndi() {
   // Use regex to be resilient to whitespace/formatting changes
   const hostRegex = /var\s+host_url\s*=\s*(?:\(function\(\)\s*{[\s\S]*?}\s*\)\(\)|"[^"]+"|\'[^\']+\');/m;
   const jquerySourceRegex = /var\s+jqueryDownloadSource\s*=\s*"https:\/\/ajax\.googleapis\.com\/ajax\/libs\/jquery\/";/;
+  const iconsRegex = /(var\s+icons_url\s*=\s*host_url\+"icons\/";\s*)/;
+  const scriptSrcRegex = /script\.src\s*=\s*host_url\s*\+\s*module\s*\+\s*"andi\.js";/;
 
   let modifiedContent = originalContent
     .replace(hostRegex, extensionHostUrl)
-    .replace(jquerySourceRegex, extensionJqueryDownloadSource);
+    .replace(jquerySourceRegex, extensionJqueryDownloadSource)
+    .replace(iconsRegex, `$1\n\n${ttHelper}\n`)
+    .replace(scriptSrcRegex, 'script.src = (window.ANDI_TRUSTED && window.ANDI_TRUSTED.makeScriptURL) ? window.ANDI_TRUSTED.makeScriptURL(host_url + module + "andi.js") : (host_url + module + "andi.js");');
   
   fs.writeFileSync(config.targetAndiFile, modifiedContent, 'utf8');
   console.log(`  ✓ ${config.targetAndiFile} (modified with chrome.runtime.getURL)`);
@@ -237,7 +284,74 @@ async function build() {
 }
 
 // Run build
-build().catch(error => {
+async function zipExtension() {
+  try {
+    const pkgPath = path.join(__dirname, 'package.json');
+    const pkg = fs.existsSync(pkgPath) ? JSON.parse(fs.readFileSync(pkgPath, 'utf8')) : {};
+
+    // Prefer extension manifest version; fall back to package.json
+    const manifestPath = path.join(__dirname, 'extension', 'manifest.json');
+    let version = '0.0.0';
+    if (fs.existsSync(manifestPath)) {
+      try {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        if (manifest && manifest.version) {
+          version = manifest.version;
+          console.log(`  ℹ Using version ${version} from extension/manifest.json`);
+        } else if (pkg.version) {
+          version = pkg.version;
+          console.log(`  ℹ extension/manifest.json missing version; falling back to package.json version ${version}`);
+        }
+      } catch (e) {
+        if (pkg.version) {
+          version = pkg.version;
+          console.log(`  ℹ Failed to parse extension/manifest.json; using package.json version ${version}`);
+        } else {
+          console.log(`  ⚠ Could not determine version from manifest or package.json; using ${version}`);
+        }
+      }
+    } else {
+      version = pkg.version || version;
+      console.log(`  ℹ extension/manifest.json not found; using package.json version ${version}`);
+    }
+
+    const distDir = path.join(__dirname, 'dist');
+    if (!fs.existsSync(distDir)) fs.mkdirSync(distDir, { recursive: true });
+
+    const zipName = `andi-extension-v${version}.zip`;
+    const zipPath = path.join(distDir, zipName);
+
+    console.log(`\n📦 Creating zip ${zipPath} ...`);
+
+    if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+
+    // Use system zip command to create archive of the extension folder
+    const cmd = `zip -r "${zipPath}" extension -x "*.DS_Store"`;
+    execSync(cmd, { stdio: 'inherit' });
+
+    console.log(`  ✓ Created ${zipPath}`);
+
+    // Ensure .gitignore has /dist/
+    const gitignorePath = path.join(__dirname, '.gitignore');
+    let gitignoreContent = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf8') : '';
+    const gitignoreLine = '/dist/';
+    const lines = gitignoreContent.split(/\r?\n/).map(l => l.trim());
+    if (!lines.includes(gitignoreLine)) {
+      gitignoreContent = (gitignoreContent.trim().length ? gitignoreContent + '\n' : '') + gitignoreLine + '\n';
+      fs.writeFileSync(gitignorePath, gitignoreContent, 'utf8');
+      console.log(`  ✓ Added ${gitignoreLine} to .gitignore`);
+    } else {
+      console.log(`  ✓ ${gitignoreLine} already present in .gitignore`);
+    }
+  } catch (err) {
+    console.warn(`  ⚠ Warning: creating zip or updating .gitignore failed: ${err.message}`);
+  }
+}
+
+build().then(async () => {
+  await zipExtension();
+  console.log('\n✅ Build + zip complete!\n');
+}).catch(error => {
   console.error('❌ Build failed:', error.message);
   process.exit(1);
 });

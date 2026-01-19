@@ -20,6 +20,47 @@ var host_url = (function() {
 var help_url = host_url+"help/";
 var icons_url = host_url+"icons/";
 
+
+
+// Trusted Types helper injected by extension build
+(function() {
+  if (!window.trustedTypes) return;
+  
+  var policy = null;
+  try {
+    policy = window.trustedTypes.createPolicy('andi-policy', {
+      createHTML: function(s) { return s; },
+      createScript: function(s) { return s; },
+      createScriptURL: function(s) { return s; }
+    });
+  } catch(e) {
+    // Fallback to default policy if it exists
+    if (window.trustedTypes.defaultPolicy) {
+       policy = window.trustedTypes.defaultPolicy;
+    }
+  }
+  
+  if (!policy) return;
+  
+  var makeHTML = function(str) { return policy.createHTML(str); };
+  var makeScriptURL = function(str) { return policy.createScriptURL(str); };
+  
+  window.ANDI_TRUSTED = window.ANDI_TRUSTED || {};
+  window.ANDI_TRUSTED.makeScriptURL = makeScriptURL;
+  
+  // Patch jQuery.htmlPrefilter to auto-wrap strings in TrustedHTML
+  // This covers $() creation, .html(), .append(), .wrapInner(), etc.
+  if (window.jQuery) {
+    var originalPrefilter = window.jQuery.htmlPrefilter;
+    window.jQuery.htmlPrefilter = function(html) {
+      var result = originalPrefilter ? originalPrefilter(html) : html;
+      if (typeof result === 'string') {
+        return makeHTML(result);
+      }
+      return result;
+    };
+  }
+})();
 //Load andi.css file immediately to minimize page flash
 (function(){
 	var head = document.getElementsByTagName("head")[0];
@@ -329,7 +370,7 @@ AndiModule.launchModule = function(module){
 		//Load the module's script
 		var script = document.createElement("script");
 		var done = false;
-		script.src = host_url + module + "andi.js";
+		script.src = (window.ANDI_TRUSTED && window.ANDI_TRUSTED.makeScriptURL) ? window.ANDI_TRUSTED.makeScriptURL(host_url + module + "andi.js") : (host_url + module + "andi.js");
 		script.type="text/javascript";
 		script.id="andiModuleScript";
 		script.onload = script.onreadystatechange = function(){if(!done && (!this.readyState || this.readyState=="loaded" || this.readyState=="complete")){done=true; init_module();}};
