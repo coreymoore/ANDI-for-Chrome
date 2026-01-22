@@ -26,7 +26,7 @@ where accessibility issues occur on the page. To accomplish this, it analyzes th
 
 ## Sounds handy! How do I install ANDI for Chrome?
 
-ANDI for Chrome is distributed as a Chrome extension. After the extension is published and approved in the Chrome Web Store, a link to the listing will be posted here.
+ANDI for Chrome is distributed as a Chrome extension. [Install it on the Chrome Web Store](https://chromewebstore.google.com/detail/andi-for-chrome/hlhogngcegklobjjplimpmgeomjapelj)
 
 ## How can I make ANDI better?
 
